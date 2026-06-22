@@ -1,0 +1,76 @@
+# ─── Android ──────────────────────────────────────────────────────────────────
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Android keystore
+*.jks
+*.keystore
+
+# Generated files
+app/src/main/java/**/BuildConfig.java
+app/src/main/assets/
+
+# ─── FastAPI / Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+dist/
+develop-eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-link
+.installed.cfg
+pip-selfcheck.json
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# ─── Uploads (user files) ─────────────────────────────────────────────────────
+backend/uploads/
+
+# ─── Environment & Secrets ────────────────────────────────────────────────────
+.env
+.env.local
+!.env.example
+secrets.properties
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Gradle wrapper (keep jar) ────────────────────────────────────────────────
+!gradle/wrapper/gradle-wrapper.jar
