@@ -9,7 +9,7 @@ object Routes {
     const val BUCKET = "bucket"
     const val BUCKET_DETAIL = "bucket_detail/{bucketId}"
     const val SHARE = "share"
-    const val FORGOT_PASSWORD = "forgot_password"
+    const val PROFILE = "profile"
 
     fun bucketDetail(bucketId: Int) = "bucket_detail/$bucketId"
 }

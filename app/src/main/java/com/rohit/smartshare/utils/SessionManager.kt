@@ -32,6 +32,11 @@ object SessionManager {
         return "Bearer ${prefs.getString(KEY_TOKEN, "") ?: ""}"
     }
 
+    fun getEmail(context: Context): String {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_EMAIL, "") ?: ""
+    }
+
     fun getUsername(context: Context): String {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         return prefs.getString(KEY_USERNAME, "") ?: ""

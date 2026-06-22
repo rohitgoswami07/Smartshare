@@ -27,6 +27,10 @@ class HomeViewModel(private val context: Context) : ViewModel() {
         loadBuckets()
     }
 
+    fun reloadUsername() {
+        _username.value = SessionManager.getUsername(context)
+    }
+
     fun loadBuckets() {
         viewModelScope.launch {
             _isLoading.value = true

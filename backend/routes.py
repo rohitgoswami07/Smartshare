@@ -34,6 +34,28 @@ def register(req: schemas.RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Registration successful"}
 
+@router.put("/profile", response_model=dict)
+def update_profile(
+    req: schemas.UpdateProfileRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    current_user.username = req.username
+    db.commit()
+    return {"message": "Profile updated", "username": current_user.username}
+
+@router.post("/change-password", response_model=dict)
+def change_password(
+    req: schemas.ChangePasswordRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not verify_password(req.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.password_hash = hash_password(req.new_password)
+    db.commit()
+    return {"message": "Password changed successfully"}
+
 @router.post("/forgot-password", response_model=dict)
 def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == req.email).first()

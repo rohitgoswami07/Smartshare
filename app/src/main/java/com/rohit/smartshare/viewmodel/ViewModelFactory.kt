@@ -19,6 +19,8 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
                 BucketViewModel(context) as T
             modelClass.isAssignableFrom(ShareViewModel::class.java) ->
                 ShareViewModel(context) as T
+            modelClass.isAssignableFrom(ProfileViewModel::class.java) ->
+                ProfileViewModel(context) as T
             else -> throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
         }
     }

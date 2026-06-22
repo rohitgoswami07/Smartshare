@@ -21,6 +21,13 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
     new_password: str
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class UpdateProfileRequest(BaseModel):
+    username: str
+
 # Bucket
 class BucketCreate(BaseModel):
     name: str

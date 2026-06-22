@@ -59,6 +59,15 @@ data class FileRenameRequest(
     val filename: String
 )
 
+data class ChangePasswordRequest(
+    val current_password: String,
+    val new_password: String
+)
+
+data class UpdateProfileRequest(
+    val username: String
+)
+
 data class MessageResponse(
     val message: String
 )

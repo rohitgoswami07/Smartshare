@@ -2,6 +2,7 @@ package com.rohit.smartshare.screens
 
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -246,6 +248,8 @@ fun HomeScreen(navController: NavController, sharedUris: List<Uri> = emptyList()
                             ),
                             shape = RoundedCornerShape(20.dp)
                         )
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable { navController.navigate(Routes.PROFILE) }
                         .padding(20.dp)
                 ) {
                     Row(
@@ -265,6 +269,11 @@ fun HomeScreen(navController: NavController, sharedUris: List<Uri> = emptyList()
                                 "${buckets.size} bucket${if (buckets.size != 1) "s" else ""} created",
                                 fontSize = 14.sp,
                                 color = Color.White.copy(alpha = 0.85f)
+                            )
+                            Text(
+                                "Tap to view profile →",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.6f)
                             )
                         }
                         Icon(

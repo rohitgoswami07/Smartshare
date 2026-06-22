@@ -9,6 +9,18 @@ interface ApiService {
     @POST("register")
     suspend fun register(@Body request: RegisterRequest): Response<MessageResponse>
 
+    @PUT("profile")
+    suspend fun updateProfile(
+        @Header("Authorization") token: String,
+        @Body request: UpdateProfileRequest
+    ): Response<MessageResponse>
+
+    @POST("change-password")
+    suspend fun changePassword(
+        @Header("Authorization") token: String,
+        @Body request: ChangePasswordRequest
+    ): Response<MessageResponse>
+
     @POST("forgot-password")
     suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<MessageResponse>
 

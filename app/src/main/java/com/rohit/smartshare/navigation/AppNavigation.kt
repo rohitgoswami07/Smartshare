@@ -16,6 +16,7 @@ import com.rohit.smartshare.screens.HomeScreen
 import com.rohit.smartshare.screens.LoginScreen
 import com.rohit.smartshare.screens.RegisterScreen
 import com.rohit.smartshare.screens.ForgotPasswordScreen
+import com.rohit.smartshare.screens.ProfileScreen
 import com.rohit.smartshare.screens.ShareScreen
 import com.rohit.smartshare.utils.SessionManager
 import com.rohit.smartshare.viewmodel.SharedInboxViewModel
@@ -64,6 +65,9 @@ fun AppNavigation(sharedInboxViewModel: SharedInboxViewModel) {
         }
         composable(Routes.FORGOT_PASSWORD) {
             ForgotPasswordScreen(navController)
+        }
+        composable(Routes.PROFILE) {
+            ProfileScreen(navController)
         }
     }
 }
