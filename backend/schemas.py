@@ -52,6 +52,8 @@ class FileResponse(BaseModel):
     size: int
     uploaded_at: int
     share_link: str
+    uploaded_by: Optional[int] = None
+    is_mine: Optional[bool] = True
 
     class Config:
         from_attributes = True
@@ -69,3 +71,11 @@ class ShareLookupResponse(BaseModel):
     bucket_id: int
     bucket_name: str
     share_code: str
+    owner_username: str
+
+class SharedAccessedBucketResponse(BaseModel):
+    bucket_id: int
+    bucket_name: str
+    share_code: str
+    owner_username: str
+    accessed_at: int

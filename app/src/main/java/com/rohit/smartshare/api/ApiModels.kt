@@ -35,7 +35,9 @@ data class FileResponse(
     val filename: String,
     val size: Int,
     val uploaded_at: Long,
-    val share_link: String
+    val share_link: String,
+    val uploaded_by: Int?,
+    val is_mine: Boolean
 )
 
 data class ShareResponse(
@@ -47,7 +49,16 @@ data class ShareResponse(
 data class ShareLookupResponse(
     val bucket_id: Int,
     val bucket_name: String,
-    val share_code: String
+    val share_code: String,
+    val owner_username: String
+)
+
+data class SharedAccessedBucket(
+    val bucket_id: Int,
+    val bucket_name: String,
+    val share_code: String,
+    val owner_username: String,
+    val accessed_at: Long
 )
 
 data class ForgotPasswordRequest(

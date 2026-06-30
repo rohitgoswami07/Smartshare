@@ -45,6 +45,7 @@ fun HomeScreen(navController: NavController, sharedUris: List<Uri> = emptyList()
     val buckets by homeViewModel.buckets.collectAsStateWithLifecycle()
     val username by homeViewModel.username.collectAsStateWithLifecycle()
     val isLoading by homeViewModel.isLoading.collectAsStateWithLifecycle()
+    val sharedBuckets by homeViewModel.sharedBuckets.collectAsStateWithLifecycle()
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var newBucketName by remember { mutableStateOf("") }
@@ -63,7 +64,10 @@ fun HomeScreen(navController: NavController, sharedUris: List<Uri> = emptyList()
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) homeViewModel.loadBuckets()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                homeViewModel.loadBuckets()
+                homeViewModel.loadSharedBuckets()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -436,6 +440,51 @@ fun HomeScreen(navController: NavController, sharedUris: List<Uri> = emptyList()
                                 showDeleteConfirm = true
                             }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(72.dp)) }
+
+            // Shared buckets accessed in last 24 hours
+            if (sharedBuckets.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Recently Accessed via Share Code",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Buckets you joined in the last 24 hours",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                items(sharedBuckets) { shared ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        onClick = { navController.navigate(Routes.bucketDetail(shared.bucket_id, isOwner = false)) },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(shared.bucket_name, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "by ${shared.owner_username} · code: ${shared.share_code}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }

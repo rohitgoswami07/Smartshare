@@ -33,6 +33,9 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
     private val _error = MutableStateFlow("")
     val error: StateFlow<String> = _error
 
+    private val _message = MutableStateFlow("")
+    val message: StateFlow<String> = _message
+
     init { loadFiles() }
 
     fun loadFiles() {
@@ -54,6 +57,7 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = ""
+            _message.value = if (files.size > 1) "Uploading ${files.size} files…" else "Uploading ${files.first().second}…"
             try {
                 val token = SessionManager.getToken(context)
                 for ((uri, fileName) in files) {
@@ -64,6 +68,7 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
                     RetrofitClient.api.uploadFile(token, bucketId, part)
                 }
                 loadFiles()
+                _message.value = if (files.size > 1) "${files.size} files uploaded!" else "${files.first().second} uploaded!"
             } catch (e: Exception) {
                 _error.value = "Upload failed: ${e.message}"
             } finally {
@@ -77,7 +82,7 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
             try {
                 val token = SessionManager.getToken(context)
                 val response = RetrofitClient.api.renameFile(token, fileId, com.rohit.smartshare.api.FileRenameRequest(newName))
-                if (response.isSuccessful) loadFiles()
+                if (response.isSuccessful) { loadFiles(); _message.value = "File renamed!" }
                 else _error.value = "Rename failed"
             } catch (e: Exception) {
                 _error.value = "Rename failed"
@@ -113,6 +118,7 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = ""
+            _message.value = "Downloading $fileName…"
             try {
                 withContext(Dispatchers.IO) {
                     val client = OkHttpClient()
@@ -185,6 +191,7 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
                 val token = SessionManager.getToken(context)
                 RetrofitClient.api.deleteFile(token, fileId)
                 loadFiles()
+                _message.value = "File deleted!"
             } catch (e: Exception) {
                 _error.value = "Delete failed"
             }
@@ -199,6 +206,7 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
                 val response = RetrofitClient.api.createShare(token, bucketId)
                 if (response.isSuccessful) {
                     _shareCode.value = response.body()?.share_code ?: ""
+                    _message.value = "Share code generated!"
                 } else {
                     _error.value = "Failed to generate share code"
                 }
@@ -207,4 +215,6 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
             }
         }
     }
+
+    fun consumeMessage() { _message.value = "" }
 }

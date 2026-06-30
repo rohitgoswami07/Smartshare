@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, BigInteger
+from sqlalchemy import Column, Integer, String, ForeignKey, BigInteger, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -30,12 +30,14 @@ class File(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     bucket_id = Column(Integer, ForeignKey("buckets.id"), nullable=False)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # null = legacy files
     filename = Column(String, nullable=False)
     filepath = Column(String, nullable=False)
     size = Column(Integer, nullable=False)
     uploaded_at = Column(BigInteger, nullable=False)
 
     bucket = relationship("Bucket", back_populates="files")
+    uploader = relationship("User", foreign_keys=[uploaded_by])
 
 class Share(Base):
     __tablename__ = "shares"
@@ -46,3 +48,15 @@ class Share(Base):
     expiry_time = Column(BigInteger, nullable=False)
 
     bucket = relationship("Bucket", back_populates="shares")
+    access_logs = relationship("SharedAccessLog", back_populates="share")
+
+class SharedAccessLog(Base):
+    __tablename__ = "shared_access_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    share_id = Column(Integer, ForeignKey("shares.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    accessed_at = Column(BigInteger, nullable=False)
+
+    share = relationship("Share", back_populates="access_logs")
+    user = relationship("User")

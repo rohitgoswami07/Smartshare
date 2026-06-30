@@ -23,6 +23,7 @@ import androidx.navigation.NavController
 import com.rohit.smartshare.navigation.Routes
 import com.rohit.smartshare.viewmodel.BucketViewModel
 import com.rohit.smartshare.viewmodel.ViewModelFactory
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +33,17 @@ fun BucketScreen(navController: NavController) {
     val bucketViewModel: BucketViewModel = viewModel(factory = factory)
     val buckets by bucketViewModel.buckets.collectAsStateWithLifecycle()
     val isLoading by bucketViewModel.isLoading.collectAsStateWithLifecycle()
+    val message by bucketViewModel.message.collectAsStateWithLifecycle()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(message) {
+        if (message.isNotEmpty()) {
+            snackbarHostState.showSnackbar(message)
+            bucketViewModel.consumeMessage()
+        }
+    }
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var bucketName by remember { mutableStateOf("") }
@@ -130,6 +142,7 @@ fun BucketScreen(navController: NavController) {
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("My Buckets", fontWeight = FontWeight.Bold) },

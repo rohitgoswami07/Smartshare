@@ -112,7 +112,7 @@ fun ShareScreen(navController: NavController) {
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
-                            onClick = { navController.navigate(Routes.bucketDetail(shareResult!!.bucket_id)) },
+                            onClick = { navController.navigate(Routes.bucketDetail(shareResult!!.bucket_id, isOwner = false)) },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Open Bucket") }

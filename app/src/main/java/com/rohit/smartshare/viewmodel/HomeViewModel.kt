@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.rohit.smartshare.api.BucketRequest
 import com.rohit.smartshare.api.BucketResponse
 import com.rohit.smartshare.api.RetrofitClient
+import com.rohit.smartshare.api.SharedAccessedBucket
 import com.rohit.smartshare.utils.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,9 @@ class HomeViewModel(private val context: Context) : ViewModel() {
     private val _buckets = MutableStateFlow<List<BucketResponse>>(emptyList())
     val buckets: StateFlow<List<BucketResponse>> = _buckets
 
+    private val _sharedBuckets = MutableStateFlow<List<SharedAccessedBucket>>(emptyList())
+    val sharedBuckets: StateFlow<List<SharedAccessedBucket>> = _sharedBuckets
+
     private val _username = MutableStateFlow("")
     val username: StateFlow<String> = _username
 
@@ -25,6 +29,17 @@ class HomeViewModel(private val context: Context) : ViewModel() {
     init {
         _username.value = SessionManager.getUsername(context)
         loadBuckets()
+        loadSharedBuckets()
+    }
+
+    fun loadSharedBuckets() {
+        viewModelScope.launch {
+            try {
+                val token = SessionManager.getToken(context)
+                val response = RetrofitClient.api.getSharedBuckets(token)
+                if (response.isSuccessful) _sharedBuckets.value = response.body() ?: emptyList()
+            } catch (e: Exception) { /* ignore */ }
+        }
     }
 
     fun reloadUsername() {

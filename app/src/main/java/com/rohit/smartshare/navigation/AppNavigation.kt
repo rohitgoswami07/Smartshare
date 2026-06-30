@@ -17,6 +17,7 @@ import com.rohit.smartshare.screens.LoginScreen
 import com.rohit.smartshare.screens.RegisterScreen
 import com.rohit.smartshare.screens.ForgotPasswordScreen
 import com.rohit.smartshare.screens.ProfileScreen
+import com.rohit.smartshare.screens.MediaPreviewScreen
 import com.rohit.smartshare.screens.ShareScreen
 import com.rohit.smartshare.utils.SessionManager
 import com.rohit.smartshare.viewmodel.SharedInboxViewModel
@@ -55,10 +56,14 @@ fun AppNavigation(sharedInboxViewModel: SharedInboxViewModel) {
         }
         composable(
             route = Routes.BUCKET_DETAIL,
-            arguments = listOf(navArgument("bucketId") { type = NavType.IntType })
+            arguments = listOf(
+                navArgument("bucketId") { type = NavType.IntType },
+                navArgument("isOwner") { type = NavType.BoolType; defaultValue = true }
+            )
         ) { backStackEntry ->
             val bucketId = backStackEntry.arguments?.getInt("bucketId") ?: 0
-            BucketDetailScreen(navController, bucketId)
+            val isOwner = backStackEntry.arguments?.getBoolean("isOwner") ?: true
+            BucketDetailScreen(navController, bucketId, isOwner)
         }
         composable(Routes.SHARE) {
             ShareScreen(navController)
@@ -68,6 +73,17 @@ fun AppNavigation(sharedInboxViewModel: SharedInboxViewModel) {
         }
         composable(Routes.PROFILE) {
             ProfileScreen(navController)
+        }
+        composable(
+            route = Routes.MEDIA_PREVIEW,
+            arguments = listOf(
+                navArgument("encodedUrl") { type = NavType.StringType },
+                navArgument("isVideo") { type = NavType.BoolType }
+            )
+        ) { backStackEntry ->
+            val encodedUrl = backStackEntry.arguments?.getString("encodedUrl") ?: ""
+            val isVideo = backStackEntry.arguments?.getBoolean("isVideo") ?: false
+            MediaPreviewScreen(navController, encodedUrl, isVideo)
         }
     }
 }

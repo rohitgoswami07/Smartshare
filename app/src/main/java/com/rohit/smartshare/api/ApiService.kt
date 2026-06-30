@@ -83,5 +83,13 @@ interface ApiService {
     ): Response<ShareResponse>
 
     @GET("share/{code}")
-    suspend fun lookupShare(@Path("code") code: String): Response<ShareLookupResponse>
+    suspend fun lookupShare(
+        @Header("Authorization") token: String,
+        @Path("code") code: String
+    ): Response<ShareLookupResponse>
+
+    @GET("shared-buckets")
+    suspend fun getSharedBuckets(
+        @Header("Authorization") token: String
+    ): Response<List<SharedAccessedBucket>>
 }

@@ -19,6 +19,9 @@ class BucketViewModel(private val context: Context) : ViewModel() {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _message = MutableStateFlow("")
+    val message: StateFlow<String> = _message
+
     fun loadBuckets() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -39,7 +42,7 @@ class BucketViewModel(private val context: Context) : ViewModel() {
             try {
                 val token = SessionManager.getToken(context)
                 val response = RetrofitClient.api.createBucket(token, BucketRequest(name))
-                if (response.isSuccessful) loadBuckets()
+                if (response.isSuccessful) { loadBuckets(); _message.value = "Bucket \"$name\" created!" }
             } catch (e: Exception) { /* ignore */ }
         }
     }
@@ -49,7 +52,7 @@ class BucketViewModel(private val context: Context) : ViewModel() {
             try {
                 val token = SessionManager.getToken(context)
                 val response = RetrofitClient.api.renameBucket(token, bucketId, BucketRequest(newName))
-                if (response.isSuccessful) loadBuckets()
+                if (response.isSuccessful) { loadBuckets(); _message.value = "Bucket renamed to \"$newName\"!" }
             } catch (e: Exception) { /* ignore */ }
         }
     }
@@ -60,7 +63,10 @@ class BucketViewModel(private val context: Context) : ViewModel() {
                 val token = SessionManager.getToken(context)
                 RetrofitClient.api.deleteBucket(token, bucketId)
                 loadBuckets()
+                _message.value = "Bucket deleted!"
             } catch (e: Exception) { /* ignore */ }
         }
     }
+
+    fun consumeMessage() { _message.value = "" }
 }

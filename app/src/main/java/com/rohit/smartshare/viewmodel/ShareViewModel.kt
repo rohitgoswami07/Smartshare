@@ -23,7 +23,8 @@ class ShareViewModel(private val context: Context) : ViewModel() {
             _errorMessage.value = ""
             _shareResult.value = null
             try {
-                val response = RetrofitClient.api.lookupShare(code)
+                val token = SessionManager.getToken(context)
+                val response = RetrofitClient.api.lookupShare(token, code)
                 if (response.isSuccessful) {
                     _shareResult.value = response.body()
                 } else {
