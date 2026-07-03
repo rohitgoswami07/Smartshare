@@ -60,15 +60,22 @@ class FileViewModel(private val context: Context, private val bucketId: Int) : V
             _message.value = if (files.size > 1) "Uploading ${files.size} files…" else "Uploading ${files.first().second}…"
             try {
                 val token = SessionManager.getToken(context)
+                var failCount = 0
                 for ((uri, fileName) in files) {
                     val bytes = context.contentResolver.openInputStream(uri)?.readBytes() ?: continue
                     val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
                     val requestBody = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
                     val part = MultipartBody.Part.createFormData("file", fileName, requestBody)
-                    RetrofitClient.api.uploadFile(token, bucketId, part)
+                    val response = RetrofitClient.api.uploadFile(token, bucketId, part)
+                    if (!response.isSuccessful) {
+                        failCount++
+                        _error.value = "Upload failed (${response.code()}): ${response.errorBody()?.string()}"
+                    }
                 }
                 loadFiles()
-                _message.value = if (files.size > 1) "${files.size} files uploaded!" else "${files.first().second} uploaded!"
+                if (failCount == 0) {
+                    _message.value = if (files.size > 1) "${files.size} files uploaded!" else "${files.first().second} uploaded!"
+                }
             } catch (e: Exception) {
                 _error.value = "Upload failed: ${e.message}"
             } finally {

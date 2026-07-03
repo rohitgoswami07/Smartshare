@@ -83,6 +83,12 @@ fun BucketDetailScreen(navController: NavController, bucketId: Int, isOwner: Boo
         }
     }
 
+    LaunchedEffect(error) {
+        if (error.isNotEmpty()) {
+            snackbarHostState.showSnackbar(error)
+        }
+    }
+
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
