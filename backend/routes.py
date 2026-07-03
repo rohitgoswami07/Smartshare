@@ -260,18 +260,24 @@ async def upload_file(
     cloudinary_url = result["secure_url"]
     cloudinary_public_id = result["public_id"]
 
-    db_file = models.File(
-        bucket_id=bucket_id,
-        uploaded_by=current_user.id,
-        filename=file.filename,
-        filepath=cloudinary_url,          # store Cloudinary URL
-        size=len(content),
-        uploaded_at=int(time.time() * 1000),
-        cloudinary_public_id=cloudinary_public_id
-    )
-    db.add(db_file)
+    # Use raw SQL insert to avoid SQLAlchemy column cache issues
+    from sqlalchemy import text as sql_text
+    row = db.execute(sql_text("""
+        INSERT INTO files (bucket_id, uploaded_by, filename, filepath, size, uploaded_at, cloudinary_public_id)
+        VALUES (:bucket_id, :uploaded_by, :filename, :filepath, :size, :uploaded_at, :cloudinary_public_id)
+        RETURNING id
+    """), {
+        "bucket_id": bucket_id,
+        "uploaded_by": current_user.id,
+        "filename": file.filename,
+        "filepath": cloudinary_url,
+        "size": len(content),
+        "uploaded_at": int(time.time() * 1000),
+        "cloudinary_public_id": cloudinary_public_id
+    })
     db.commit()
-    db.refresh(db_file)
+    file_id = row.fetchone()[0]
+    db_file = db.query(models.File).filter(models.File.id == file_id).first()
     return make_file_response(db_file, current_user.id)
 
 @router.put("/file/{file_id}", response_model=schemas.FileResponse)
