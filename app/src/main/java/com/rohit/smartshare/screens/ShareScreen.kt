@@ -22,12 +22,17 @@ import com.rohit.smartshare.viewmodel.ViewModelFactory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShareScreen(navController: NavController) {
+fun ShareScreen(navController: NavController, prefilledCode: String = "") {
     val context = LocalContext.current
     val factory = remember { ViewModelFactory(context) }
     val shareViewModel: ShareViewModel = viewModel(factory = factory)
 
-    var shareCode by remember { mutableStateOf("") }
+    var shareCode by remember { mutableStateOf(prefilledCode) }
+
+    // Auto-lookup if code was pre-filled from chat
+    LaunchedEffect(prefilledCode) {
+        if (prefilledCode.isNotBlank()) shareViewModel.lookupShare(prefilledCode)
+    }
     val shareResult by shareViewModel.shareResult.collectAsStateWithLifecycle()
     val errorMessage by shareViewModel.errorMessage.collectAsStateWithLifecycle()
 

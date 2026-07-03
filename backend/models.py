@@ -35,6 +35,7 @@ class File(Base):
     filepath = Column(String, nullable=False)
     size = Column(Integer, nullable=False)
     uploaded_at = Column(BigInteger, nullable=False)
+    cloudinary_public_id = Column(String, nullable=True)
 
     bucket = relationship("Bucket", back_populates="files")
     uploader = relationship("User", foreign_keys=[uploaded_by])
@@ -60,3 +61,28 @@ class SharedAccessLog(Base):
 
     share = relationship("Share", back_populates="access_logs")
     user = relationship("User")
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    friend_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+    friend = relationship("User", foreign_keys=[friend_id])
+
+class CodeMessage(Base):
+    __tablename__ = "code_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    receiver_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    share_code = Column(String, nullable=False)
+    bucket_name = Column(String, nullable=False)
+    expiry_time = Column(BigInteger, nullable=False)
+    sent_at = Column(BigInteger, nullable=False)
+
+    sender = relationship("User", foreign_keys=[sender_id])
+    receiver = relationship("User", foreign_keys=[receiver_id])

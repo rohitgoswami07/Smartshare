@@ -17,6 +17,8 @@ import com.rohit.smartshare.screens.LoginScreen
 import com.rohit.smartshare.screens.RegisterScreen
 import com.rohit.smartshare.screens.ForgotPasswordScreen
 import com.rohit.smartshare.screens.ProfileScreen
+import com.rohit.smartshare.screens.ChatScreen
+import com.rohit.smartshare.screens.FriendsScreen
 import com.rohit.smartshare.screens.MediaPreviewScreen
 import com.rohit.smartshare.screens.ShareScreen
 import com.rohit.smartshare.utils.SessionManager
@@ -73,6 +75,27 @@ fun AppNavigation(sharedInboxViewModel: SharedInboxViewModel) {
         }
         composable(Routes.PROFILE) {
             ProfileScreen(navController)
+        }
+        composable(Routes.FRIENDS) {
+            FriendsScreen(navController)
+        }
+        composable(
+            route = Routes.CHAT,
+            arguments = listOf(
+                navArgument("friendId") { type = NavType.IntType },
+                navArgument("friendUsername") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val friendId = backStackEntry.arguments?.getInt("friendId") ?: 0
+            val friendUsername = backStackEntry.arguments?.getString("friendUsername") ?: ""
+            ChatScreen(navController, friendId, friendUsername)
+        }
+        composable(
+            route = Routes.CHAT_JOIN,
+            arguments = listOf(navArgument("shareCode") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val shareCode = backStackEntry.arguments?.getString("shareCode") ?: ""
+            ShareScreen(navController, prefilledCode = shareCode)
         }
         composable(
             route = Routes.MEDIA_PREVIEW,

@@ -92,4 +92,34 @@ interface ApiService {
     suspend fun getSharedBuckets(
         @Header("Authorization") token: String
     ): Response<List<SharedAccessedBucket>>
+
+    @POST("friends/{username}")
+    suspend fun addFriend(
+        @Header("Authorization") token: String,
+        @Path("username") username: String
+    ): Response<FriendResponse>
+
+    @DELETE("friends/{friendId}")
+    suspend fun removeFriend(
+        @Header("Authorization") token: String,
+        @Path("friendId") friendId: Int
+    ): Response<MessageResponse>
+
+    @GET("friends")
+    suspend fun getFriends(
+        @Header("Authorization") token: String
+    ): Response<List<FriendResponse>>
+
+    @POST("messages/{friendId}/{bucketId}")
+    suspend fun sendCode(
+        @Header("Authorization") token: String,
+        @Path("friendId") friendId: Int,
+        @Path("bucketId") bucketId: Int
+    ): Response<CodeMessageResponse>
+
+    @GET("messages/{friendId}")
+    suspend fun getMessages(
+        @Header("Authorization") token: String,
+        @Path("friendId") friendId: Int
+    ): Response<List<CodeMessageResponse>>
 }

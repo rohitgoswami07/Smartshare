@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -218,6 +219,9 @@ fun HomeScreen(navController: NavController, sharedUris: List<Uri> = emptyList()
                         }
                     }) {
                         Icon(Icons.Default.ExitToApp, contentDescription = "Logout")
+                    }
+                    IconButton(onClick = { navController.navigate(Routes.FRIENDS) }) {
+                        Icon(Icons.Default.People, contentDescription = "Friends")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

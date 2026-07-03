@@ -9,12 +9,17 @@ import time
 import random
 import string
 import os
-import aiofiles
+import cloudinary
+import cloudinary.uploader
 
 load_dotenv()
 
-UPLOAD_DIR = "uploads"
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True
+)
 
 router = APIRouter()
 
@@ -28,7 +33,7 @@ def make_file_response(f: models.File, current_user_id: int) -> schemas.FileResp
         filename=f.filename,
         size=f.size,
         uploaded_at=f.uploaded_at,
-        share_link=f"{BASE_URL}/download/{f.id}",
+        share_link=f.filepath,  # filepath now stores the Cloudinary URL
         uploaded_by=f.uploaded_by,
         is_mine=is_mine
     )
@@ -159,8 +164,18 @@ def delete_bucket(
 
     files = db.query(models.File).filter(models.File.bucket_id == bucket_id).all()
     for f in files:
-        if os.path.exists(f.filepath):
-            os.remove(f.filepath)
+        if f.cloudinary_public_id:
+            ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+            if ext in ('mp4', 'mkv', 'mov', 'avi', 'webm'):
+                res_type = 'video'
+            elif ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'):
+                res_type = 'image'
+            else:
+                res_type = 'raw'
+            try:
+                cloudinary.uploader.destroy(f.cloudinary_public_id, resource_type=res_type)
+            except Exception:
+                pass
         db.delete(f)
 
     # delete access logs first, then shares
@@ -202,7 +217,6 @@ async def upload_file(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Allow owner OR shared user with valid share code
     bucket = db.query(models.Bucket).filter(models.Bucket.id == bucket_id).first()
     if not bucket:
         raise HTTPException(status_code=404, detail="Bucket not found")
@@ -213,20 +227,30 @@ async def upload_file(
     if not is_owner and not has_share:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    filepath = os.path.join(UPLOAD_DIR, f"{int(time.time())}_{file.filename}")
+    content = await file.read()
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    is_video = ext in ('mp4', 'mkv', 'mov', 'avi', 'webm')
+    resource_type = 'video' if is_video else 'auto'
 
-    async with aiofiles.open(filepath, "wb") as f:
-        content = await file.read()
-        await f.write(content)
+    result = cloudinary.uploader.upload(
+        content,
+        folder=f"smartshare/bucket_{bucket_id}",
+        public_id=f"{int(time.time())}_{file.filename}",
+        resource_type=resource_type,
+        use_filename=True,
+        unique_filename=False
+    )
+    cloudinary_url = result["secure_url"]
+    cloudinary_public_id = result["public_id"]
 
     db_file = models.File(
         bucket_id=bucket_id,
         uploaded_by=current_user.id,
         filename=file.filename,
-        filepath=filepath,
+        filepath=cloudinary_url,          # store Cloudinary URL
         size=len(content),
-        uploaded_at=int(time.time() * 1000)
+        uploaded_at=int(time.time() * 1000),
+        cloudinary_public_id=cloudinary_public_id
     )
     db.add(db_file)
     db.commit()
@@ -276,23 +300,30 @@ def delete_file(
     if not is_bucket_owner and not is_uploader:
         raise HTTPException(status_code=403, detail="You can only delete files you uploaded")
 
-    if os.path.exists(db_file.filepath):
-        os.remove(db_file.filepath)
+    if db_file.cloudinary_public_id:
+        ext = db_file.filename.rsplit('.', 1)[-1].lower() if '.' in db_file.filename else ''
+        if ext in ('mp4', 'mkv', 'mov', 'avi', 'webm'):
+            res_type = 'video'
+        elif ext in ('jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'):
+            res_type = 'image'
+        else:
+            res_type = 'raw'
+        try:
+            cloudinary.uploader.destroy(db_file.cloudinary_public_id, resource_type=res_type)
+        except Exception:
+            pass
+
     db.delete(db_file)
     db.commit()
     return {"message": "File deleted"}
 
 @router.get("/download/{file_id}")
 def download_file(file_id: int, db: Session = Depends(get_db)):
-    from fastapi.responses import FileResponse as FastAPIFileResponse
+    from fastapi.responses import RedirectResponse
     db_file = db.query(models.File).filter(models.File.id == file_id).first()
-    if not db_file or not os.path.exists(db_file.filepath):
+    if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
-    return FastAPIFileResponse(
-        db_file.filepath,
-        filename=db_file.filename,
-        media_type="application/octet-stream"
-    )
+    return RedirectResponse(url=db_file.filepath)
 
 # ─── Sharing ──────────────────────────────────────────────────────────────────
 
@@ -387,3 +418,133 @@ def get_shared_buckets(
                 accessed_at=log.accessed_at
             ))
     return result
+
+# ─── Friends ──────────────────────────────────────────────────────────────────
+
+@router.post("/friends/{username}", response_model=schemas.FriendResponse)
+def add_friend(
+    username: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    target = db.query(models.User).filter(
+        models.User.username.ilike(username)
+    ).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot add yourself")
+    existing = db.query(models.Friendship).filter(
+        models.Friendship.user_id == current_user.id,
+        models.Friendship.friend_id == target.id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Already friends")
+    # Add both directions for easy querying
+    db.add(models.Friendship(user_id=current_user.id, friend_id=target.id, created_at=int(time.time() * 1000)))
+    db.add(models.Friendship(user_id=target.id, friend_id=current_user.id, created_at=int(time.time() * 1000)))
+    db.commit()
+    return schemas.FriendResponse(user_id=target.id, username=target.username)
+
+@router.delete("/friends/{friend_id}", response_model=dict)
+def remove_friend(
+    friend_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    db.query(models.Friendship).filter(
+        ((models.Friendship.user_id == current_user.id) & (models.Friendship.friend_id == friend_id)) |
+        ((models.Friendship.user_id == friend_id) & (models.Friendship.friend_id == current_user.id))
+    ).delete()
+    db.commit()
+    return {"message": "Friend removed"}
+
+@router.get("/friends", response_model=list[schemas.FriendResponse])
+def get_friends(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    friendships = db.query(models.Friendship).filter(
+        models.Friendship.user_id == current_user.id
+    ).all()
+    return [schemas.FriendResponse(user_id=f.friend.id, username=f.friend.username) for f in friendships]
+
+@router.post("/messages/{friend_id}/{bucket_id}", response_model=schemas.CodeMessageResponse)
+def send_code(
+    friend_id: int,
+    bucket_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Must be friends
+    friendship = db.query(models.Friendship).filter(
+        models.Friendship.user_id == current_user.id,
+        models.Friendship.friend_id == friend_id
+    ).first()
+    if not friendship:
+        raise HTTPException(status_code=403, detail="Not friends")
+
+    # Get or create a valid share code for this bucket
+    share = get_valid_share(bucket_id, db)
+    if not share:
+        bucket = db.query(models.Bucket).filter(
+            models.Bucket.id == bucket_id,
+            models.Bucket.owner_id == current_user.id
+        ).first()
+        if not bucket:
+            raise HTTPException(status_code=404, detail="Bucket not found or not yours")
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        expiry = int(time.time() * 1000) + (24 * 60 * 60 * 1000)
+        share = models.Share(bucket_id=bucket_id, share_code=code, expiry_time=expiry)
+        db.add(share)
+        db.commit()
+        db.refresh(share)
+
+    msg = models.CodeMessage(
+        sender_id=current_user.id,
+        receiver_id=friend_id,
+        share_code=share.share_code,
+        bucket_name=share.bucket.name,
+        expiry_time=share.expiry_time,
+        sent_at=int(time.time() * 1000)
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return schemas.CodeMessageResponse(
+        id=msg.id,
+        sender_id=msg.sender_id,
+        sender_username=current_user.username,
+        receiver_id=msg.receiver_id,
+        share_code=msg.share_code,
+        bucket_name=msg.bucket_name,
+        expiry_time=msg.expiry_time,
+        sent_at=msg.sent_at
+    )
+
+@router.get("/messages/{friend_id}", response_model=list[schemas.CodeMessageResponse])
+def get_messages(
+    friend_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    now = int(time.time() * 1000)
+    msgs = db.query(models.CodeMessage).filter(
+        ((models.CodeMessage.sender_id == current_user.id) & (models.CodeMessage.receiver_id == friend_id)) |
+        ((models.CodeMessage.sender_id == friend_id) & (models.CodeMessage.receiver_id == current_user.id))
+    ).filter(
+        models.CodeMessage.expiry_time > now  # only return non-expired codes
+    ).order_by(models.CodeMessage.sent_at.asc()).all()
+
+    return [
+        schemas.CodeMessageResponse(
+            id=m.id,
+            sender_id=m.sender_id,
+            sender_username=m.sender.username,
+            receiver_id=m.receiver_id,
+            share_code=m.share_code,
+            bucket_name=m.bucket_name,
+            expiry_time=m.expiry_time,
+            sent_at=m.sent_at
+        ) for m in msgs
+    ]

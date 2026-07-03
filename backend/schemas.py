@@ -79,3 +79,24 @@ class SharedAccessedBucketResponse(BaseModel):
     share_code: str
     owner_username: str
     accessed_at: int
+
+# Friends
+class FriendResponse(BaseModel):
+    user_id: int
+    username: str
+
+    class Config:
+        from_attributes = True
+
+class CodeMessageResponse(BaseModel):
+    id: int
+    sender_id: int
+    sender_username: str
+    receiver_id: int
+    share_code: str
+    bucket_name: str
+    expiry_time: int
+    sent_at: int
+
+    class Config:
+        from_attributes = True

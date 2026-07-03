@@ -82,3 +82,19 @@ data class UpdateProfileRequest(
 data class MessageResponse(
     val message: String
 )
+
+data class FriendResponse(
+    val user_id: Int,
+    val username: String
+)
+
+data class CodeMessageResponse(
+    val id: Int,
+    val sender_id: Int,
+    val sender_username: String,
+    val receiver_id: Int,
+    val share_code: String,
+    val bucket_name: String,
+    val expiry_time: Long,
+    val sent_at: Long
+)

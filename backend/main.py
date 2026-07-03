@@ -4,8 +4,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import engine
 import models
 import routes
+from sqlalchemy import text
 
 models.Base.metadata.create_all(bind=engine)
+
+# Safe migration: add cloudinary_public_id if it doesn't exist yet
+with engine.connect() as conn:
+    conn.execute(text("""
+        ALTER TABLE files ADD COLUMN IF NOT EXISTS cloudinary_public_id VARCHAR;
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS friendships (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            friend_id INTEGER NOT NULL REFERENCES users(id),
+            created_at BIGINT NOT NULL
+        );
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS code_messages (
+            id SERIAL PRIMARY KEY,
+            sender_id INTEGER NOT NULL REFERENCES users(id),
+            receiver_id INTEGER NOT NULL REFERENCES users(id),
+            share_code VARCHAR NOT NULL,
+            bucket_name VARCHAR NOT NULL,
+            expiry_time BIGINT NOT NULL,
+            sent_at BIGINT NOT NULL
+        );
+    """))
+    conn.commit()
 
 app = FastAPI(
     title="SmartShare API",
