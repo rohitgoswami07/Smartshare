@@ -14,6 +14,9 @@ with engine.connect() as conn:
         ALTER TABLE files ADD COLUMN IF NOT EXISTS cloudinary_public_id VARCHAR;
     """))
     conn.execute(text("""
+        ALTER TABLE files ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES users(id);
+    """))
+    conn.execute(text("""
         CREATE TABLE IF NOT EXISTS friendships (
             id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
