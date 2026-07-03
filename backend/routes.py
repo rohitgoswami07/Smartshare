@@ -9,6 +9,7 @@ import time
 import random
 import string
 import os
+import re
 import cloudinary
 import cloudinary.uploader
 
@@ -196,15 +197,24 @@ def get_files(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Allow owner OR anyone with a valid share code for this bucket
     bucket = db.query(models.Bucket).filter(models.Bucket.id == bucket_id).first()
     if not bucket:
         raise HTTPException(status_code=404, detail="Bucket not found")
 
     is_owner = bucket.owner_id == current_user.id
+
+    # Check valid share code exists for this bucket
     has_share = get_valid_share(bucket_id, db) is not None
 
-    if not is_owner and not has_share:
+    # Also allow if user received a code message for this bucket that hasn't expired
+    has_message_access = db.query(models.CodeMessage).filter(
+        models.CodeMessage.receiver_id == current_user.id,
+        models.CodeMessage.expiry_time > int(time.time() * 1000)
+    ).join(models.Share, models.CodeMessage.share_code == models.Share.share_code).filter(
+        models.Share.bucket_id == bucket_id
+    ).first() is not None
+
+    if not is_owner and not has_share and not has_message_access:
         raise HTTPException(status_code=403, detail="Access denied")
 
     files = db.query(models.File).filter(models.File.bucket_id == bucket_id).all()
@@ -223,22 +233,29 @@ async def upload_file(
 
     is_owner = bucket.owner_id == current_user.id
     has_share = get_valid_share(bucket_id, db) is not None
+    has_message_access = db.query(models.CodeMessage).filter(
+        models.CodeMessage.receiver_id == current_user.id,
+        models.CodeMessage.expiry_time > int(time.time() * 1000)
+    ).join(models.Share, models.CodeMessage.share_code == models.Share.share_code).filter(
+        models.Share.bucket_id == bucket_id
+    ).first() is not None
 
-    if not is_owner and not has_share:
+    if not is_owner and not has_share and not has_message_access:
         raise HTTPException(status_code=403, detail="Access denied")
 
+    # Sanitize filename for Cloudinary public_id
+    safe_name = re.sub(r'[^\w\-.]', '_', file.filename)
     content = await file.read()
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    ext = safe_name.rsplit('.', 1)[-1].lower() if '.' in safe_name else ''
     is_video = ext in ('mp4', 'mkv', 'mov', 'avi', 'webm')
     resource_type = 'video' if is_video else 'auto'
 
     result = cloudinary.uploader.upload(
         content,
         folder=f"smartshare/bucket_{bucket_id}",
-        public_id=f"{int(time.time())}_{file.filename}",
+        public_id=f"{int(time.time())}_{safe_name}",
         resource_type=resource_type,
-        use_filename=True,
-        unique_filename=False
+        overwrite=False
     )
     cloudinary_url = result["secure_url"]
     cloudinary_public_id = result["public_id"]
