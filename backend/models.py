@@ -35,7 +35,6 @@ class File(Base):
     filepath = Column(String, nullable=False)
     size = Column(Integer, nullable=False)
     uploaded_at = Column(BigInteger, nullable=False)
-    cloudinary_public_id = Column(String, nullable=True)
 
     bucket = relationship("Bucket", back_populates="files")
     uploader = relationship("User", foreign_keys=[uploaded_by])
