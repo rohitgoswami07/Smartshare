@@ -35,6 +35,14 @@ with engine.connect() as conn:
             sent_at BIGINT NOT NULL
         );
     """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS shared_access_logs (
+            id SERIAL PRIMARY KEY,
+            share_id INTEGER NOT NULL REFERENCES shares(id),
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            accessed_at BIGINT NOT NULL
+        );
+    """))
     conn.commit()
 
 app = FastAPI(
