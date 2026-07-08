@@ -30,9 +30,10 @@ class File(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     bucket_id = Column(Integer, ForeignKey("buckets.id"), nullable=False)
-    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # null = legacy files
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     filename = Column(String, nullable=False)
     filepath = Column(String, nullable=False)
+    cloudinary_public_id = Column(String, nullable=True)
     size = Column(Integer, nullable=False)
     uploaded_at = Column(BigInteger, nullable=False)
 

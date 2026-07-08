@@ -166,13 +166,10 @@ def delete_bucket(
     files = db.query(models.File).filter(models.File.bucket_id == bucket_id).all()
     for f in files:
         try:
-            from sqlalchemy import text as sql_text
-            row = db.execute(sql_text("SELECT cloudinary_public_id FROM files WHERE id = :id"), {"id": f.id}).fetchone()
-            cid = row[0] if row else None
-            if cid:
+            if f.cloudinary_public_id:
                 ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
                 res_type = 'video' if ext in ('mp4','mkv','mov','avi','webm') else ('image' if ext in ('jpg','jpeg','png','gif','webp','bmp','svg') else 'raw')
-                cloudinary.uploader.destroy(cid, resource_type=res_type)
+                cloudinary.uploader.destroy(f.cloudinary_public_id, resource_type=res_type)
         except Exception:
             pass
         db.delete(f)
@@ -263,23 +260,13 @@ async def upload_file(
         uploaded_by=current_user.id,
         filename=file.filename,
         filepath=cloudinary_url,
+        cloudinary_public_id=cloudinary_public_id,
         size=len(content),
         uploaded_at=int(time.time() * 1000)
     )
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
-
-    # Store cloudinary_public_id separately via raw SQL (column added via migration)
-    try:
-        from sqlalchemy import text as sql_text
-        db.execute(sql_text(
-            "UPDATE files SET cloudinary_public_id = :pid WHERE id = :fid"
-        ), {"pid": cloudinary_public_id, "fid": db_file.id})
-        db.commit()
-    except Exception:
-        pass  # non-critical, file is already saved
-
     return make_file_response(db_file, current_user.id)
 
 @router.put("/file/{file_id}", response_model=schemas.FileResponse)
@@ -326,13 +313,10 @@ def delete_file(
         raise HTTPException(status_code=403, detail="You can only delete files you uploaded")
 
     try:
-        from sqlalchemy import text as sql_text
-        row = db.execute(sql_text("SELECT cloudinary_public_id FROM files WHERE id = :id"), {"id": db_file.id}).fetchone()
-        cid = row[0] if row else None
-        if cid:
+        if db_file.cloudinary_public_id:
             ext = db_file.filename.rsplit('.', 1)[-1].lower() if '.' in db_file.filename else ''
             res_type = 'video' if ext in ('mp4','mkv','mov','avi','webm') else ('image' if ext in ('jpg','jpeg','png','gif','webp','bmp','svg') else 'raw')
-            cloudinary.uploader.destroy(cid, resource_type=res_type)
+            cloudinary.uploader.destroy(db_file.cloudinary_public_id, resource_type=res_type)
     except Exception:
         pass
 
