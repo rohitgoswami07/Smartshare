@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.rohit.smartshare.navigation.Routes
 import com.rohit.smartshare.viewmodel.FileViewModel
@@ -86,6 +87,14 @@ fun BucketDetailScreen(navController: NavController, bucketId: Int, isOwner: Boo
     LaunchedEffect(error) {
         if (error.isNotEmpty()) {
             snackbarHostState.showSnackbar(error)
+        }
+    }
+
+    // Auto-refresh every 10 seconds to pick up changes from other users
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(10_000)
+            fileViewModel.loadFiles()
         }
     }
 

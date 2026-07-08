@@ -59,11 +59,19 @@ def has_bucket_access(bucket_id: int, current_user: models.User, db: Session) ->
         models.Bucket.owner_id == current_user.id
     ).first():
         return True
-    return db.query(models.CodeMessage).filter(
+    # Access via friend message
+    if db.query(models.CodeMessage).filter(
         models.CodeMessage.receiver_id == current_user.id,
-        models.CodeMessage.expiry_time > int(time.time() * 1000)
+        models.CodeMessage.expiry_time > now_ms()
     ).join(models.Share, models.CodeMessage.share_code == models.Share.share_code).filter(
         models.Share.bucket_id == bucket_id
+    ).first():
+        return True
+    # Access via manual share code lookup
+    return db.query(models.SharedAccessLog).join(models.Share).filter(
+        models.SharedAccessLog.user_id == current_user.id,
+        models.Share.bucket_id == bucket_id,
+        models.Share.expiry_time > now_ms()
     ).first() is not None
 
 def now_ms() -> int:
