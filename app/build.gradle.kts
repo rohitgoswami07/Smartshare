@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.rohit.smartshare"
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.rohit.smartshare"
