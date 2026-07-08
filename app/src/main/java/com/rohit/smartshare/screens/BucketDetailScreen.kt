@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,7 +34,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.rohit.smartshare.navigation.Routes
 import com.rohit.smartshare.viewmodel.FileViewModel
@@ -87,14 +87,6 @@ fun BucketDetailScreen(navController: NavController, bucketId: Int, isOwner: Boo
     LaunchedEffect(error) {
         if (error.isNotEmpty()) {
             snackbarHostState.showSnackbar(error)
-        }
-    }
-
-    // Auto-refresh every 10 seconds to pick up changes from other users
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(10_000)
-            fileViewModel.loadFiles()
         }
     }
 
@@ -166,10 +158,14 @@ fun BucketDetailScreen(navController: NavController, bucketId: Int, isOwner: Boo
             )
         }
     ) { padding ->
+        PullToRefreshBox(
+            isRefreshing = isLoading,
+            onRefresh = { fileViewModel.loadFiles() },
+            modifier = Modifier.padding(padding)
+        ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
@@ -366,5 +362,6 @@ fun BucketDetailScreen(navController: NavController, bucketId: Int, isOwner: Boo
 
             item { Spacer(modifier = Modifier.height(16.dp)) }
         }
+        } // PullToRefreshBox
     }
 }
