@@ -1,19 +1,19 @@
-from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from sqlalchemy.orm import Session
-from database import get_db
-from auth import hash_password, verify_password, create_token, get_current_user
-import models
-import schemas
 import time
 import random
 import string
 import os
 import re
+
 import cloudinary
 import cloudinary.uploader
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
 
-load_dotenv()
+from database import get_db
+from auth import hash_password, verify_password, create_token, get_current_user
+import models
+import schemas
 
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
@@ -24,19 +24,27 @@ cloudinary.config(
 
 router = APIRouter()
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
+VIDEO_EXTS = {'mp4', 'mkv', 'mov', 'avi', 'webm'}
+IMAGE_EXTS = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'}
+
+def get_cloudinary_resource_type(filename: str) -> str:
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    if ext in VIDEO_EXTS:
+        return 'video'
+    if ext in IMAGE_EXTS:
+        return 'image'
+    return 'raw'
 
 def make_file_response(f: models.File, current_user_id: int) -> schemas.FileResponse:
-    is_mine = (f.uploaded_by == current_user_id) or (f.uploaded_by is None)
     return schemas.FileResponse(
         id=f.id,
         bucket_id=f.bucket_id,
         filename=f.filename,
         size=f.size,
         uploaded_at=f.uploaded_at,
-        share_link=f.filepath,  # filepath now stores the Cloudinary URL
+        share_link=f.filepath,
         uploaded_by=f.uploaded_by,
-        is_mine=is_mine
+        is_mine=(f.uploaded_by == current_user_id) or (f.uploaded_by is None)
     )
 
 def get_valid_share(bucket_id: int, db: Session) -> models.Share | None:
@@ -45,21 +53,57 @@ def get_valid_share(bucket_id: int, db: Session) -> models.Share | None:
         models.Share.expiry_time > int(time.time() * 1000)
     ).first()
 
+def has_bucket_access(bucket_id: int, current_user: models.User, db: Session) -> bool:
+    if db.query(models.Bucket).filter(
+        models.Bucket.id == bucket_id,
+        models.Bucket.owner_id == current_user.id
+    ).first():
+        return True
+    return db.query(models.CodeMessage).filter(
+        models.CodeMessage.receiver_id == current_user.id,
+        models.CodeMessage.expiry_time > int(time.time() * 1000)
+    ).join(models.Share, models.CodeMessage.share_code == models.Share.share_code).filter(
+        models.Share.bucket_id == bucket_id
+    ).first() is not None
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=dict)
 def register(req: schemas.RegisterRequest, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == req.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = models.User(
+    db.add(models.User(
         username=req.username,
         email=req.email,
         password_hash=hash_password(req.password),
-        created_at=int(time.time() * 1000)
-    )
-    db.add(user)
+        created_at=now_ms()
+    ))
     db.commit()
     return {"message": "Registration successful"}
+
+@router.post("/login", response_model=schemas.TokenResponse)
+def login(req: schemas.LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email).first()
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    return schemas.TokenResponse(
+        token=create_token(user.id, user.email),
+        user_id=user.id,
+        username=user.username,
+        email=user.email
+    )
+
+@router.post("/forgot-password", response_model=dict)
+def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email")
+    user.password_hash = hash_password(req.new_password)
+    db.commit()
+    return {"message": "Password updated successfully"}
 
 @router.put("/profile", response_model=dict)
 def update_profile(
@@ -83,38 +127,11 @@ def change_password(
     db.commit()
     return {"message": "Password changed successfully"}
 
-@router.post("/forgot-password", response_model=dict)
-def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == req.email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="No account found with this email")
-    user.password_hash = hash_password(req.new_password)
-    db.commit()
-    return {"message": "Password updated successfully"}
-
-@router.post("/login", response_model=schemas.TokenResponse)
-def login(req: schemas.LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == req.email).first()
-    if not user or not verify_password(req.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = create_token(user.id, user.email)
-    return schemas.TokenResponse(
-        token=token,
-        user_id=user.id,
-        username=user.username,
-        email=user.email
-    )
-
 # ─── Buckets ──────────────────────────────────────────────────────────────────
 
 @router.get("/buckets", response_model=list[schemas.BucketResponse])
-def get_buckets(
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    return db.query(models.Bucket).filter(
-        models.Bucket.owner_id == current_user.id
-    ).all()
+def get_buckets(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(models.Bucket).filter(models.Bucket.owner_id == current_user.id).all()
 
 @router.post("/bucket", response_model=schemas.BucketResponse)
 def create_bucket(
@@ -122,11 +139,7 @@ def create_bucket(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    bucket = models.Bucket(
-        name=req.name,
-        owner_id=current_user.id,
-        created_at=int(time.time() * 1000)
-    )
+    bucket = models.Bucket(name=req.name, owner_id=current_user.id, created_at=now_ms())
     db.add(bucket)
     db.commit()
     db.refresh(bucket)
@@ -163,20 +176,15 @@ def delete_bucket(
     if not bucket:
         raise HTTPException(status_code=404, detail="Bucket not found")
 
-    files = db.query(models.File).filter(models.File.bucket_id == bucket_id).all()
-    for f in files:
+    for f in db.query(models.File).filter(models.File.bucket_id == bucket_id).all():
         try:
             if f.cloudinary_public_id:
-                ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
-                res_type = 'video' if ext in ('mp4','mkv','mov','avi','webm') else ('image' if ext in ('jpg','jpeg','png','gif','webp','bmp','svg') else 'raw')
-                cloudinary.uploader.destroy(f.cloudinary_public_id, resource_type=res_type)
+                cloudinary.uploader.destroy(f.cloudinary_public_id, resource_type=get_cloudinary_resource_type(f.filename))
         except Exception:
             pass
         db.delete(f)
 
-    # delete access logs first, then shares
-    shares = db.query(models.Share).filter(models.Share.bucket_id == bucket_id).all()
-    for s in shares:
+    for s in db.query(models.Share).filter(models.Share.bucket_id == bucket_id).all():
         db.query(models.SharedAccessLog).filter(models.SharedAccessLog.share_id == s.id).delete()
         db.delete(s)
 
@@ -192,26 +200,10 @@ def get_files(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    bucket = db.query(models.Bucket).filter(models.Bucket.id == bucket_id).first()
-    if not bucket:
+    if not db.query(models.Bucket).filter(models.Bucket.id == bucket_id).first():
         raise HTTPException(status_code=404, detail="Bucket not found")
-
-    is_owner = bucket.owner_id == current_user.id
-
-    # Check valid share code exists for this bucket
-    has_share = get_valid_share(bucket_id, db) is not None
-
-    # Also allow if user received a code message for this bucket that hasn't expired
-    has_message_access = db.query(models.CodeMessage).filter(
-        models.CodeMessage.receiver_id == current_user.id,
-        models.CodeMessage.expiry_time > int(time.time() * 1000)
-    ).join(models.Share, models.CodeMessage.share_code == models.Share.share_code).filter(
-        models.Share.bucket_id == bucket_id
-    ).first() is not None
-
-    if not is_owner and not has_share and not has_message_access:
+    if not has_bucket_access(bucket_id, current_user, db):
         raise HTTPException(status_code=403, detail="Access denied")
-
     files = db.query(models.File).filter(models.File.bucket_id == bucket_id).all()
     return [make_file_response(f, current_user.id) for f in files]
 
@@ -222,31 +214,19 @@ async def upload_file(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    bucket = db.query(models.Bucket).filter(models.Bucket.id == bucket_id).first()
-    if not bucket:
+    if not db.query(models.Bucket).filter(models.Bucket.id == bucket_id).first():
         raise HTTPException(status_code=404, detail="Bucket not found")
-
-    is_owner = bucket.owner_id == current_user.id
-    has_share = get_valid_share(bucket_id, db) is not None
-    has_message_access = db.query(models.CodeMessage).filter(
-        models.CodeMessage.receiver_id == current_user.id,
-        models.CodeMessage.expiry_time > int(time.time() * 1000)
-    ).join(models.Share, models.CodeMessage.share_code == models.Share.share_code).filter(
-        models.Share.bucket_id == bucket_id
-    ).first() is not None
-
-    if not is_owner and not has_share and not has_message_access:
+    if not has_bucket_access(bucket_id, current_user, db):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Sanitize filename for Cloudinary public_id
     original_filename = file.filename or "unnamed"
     safe_name = re.sub(r'[^\w\-.]', '_', original_filename)
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
+
     ext = safe_name.rsplit('.', 1)[-1].lower() if '.' in safe_name else ''
-    is_video = ext in ('mp4', 'mkv', 'mov', 'avi', 'webm')
-    resource_type = 'video' if is_video else 'auto'
+    resource_type = 'video' if ext in VIDEO_EXTS else 'auto'
 
     try:
         result = cloudinary.uploader.upload(
@@ -258,17 +238,15 @@ async def upload_file(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
-    cloudinary_url = result["secure_url"]
-    cloudinary_public_id = result["public_id"]
 
     db_file = models.File(
         bucket_id=bucket_id,
         uploaded_by=current_user.id,
         filename=original_filename,
-        filepath=cloudinary_url,
-        cloudinary_public_id=cloudinary_public_id,
+        filepath=result["secure_url"],
+        cloudinary_public_id=result["public_id"],
         size=len(content),
-        uploaded_at=int(time.time() * 1000)
+        uploaded_at=now_ms()
     )
     db.add(db_file)
     db.commit()
@@ -282,19 +260,11 @@ def rename_file(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Only the uploader or bucket owner can rename
-    db_file = db.query(models.File).join(models.Bucket).filter(
-        models.File.id == file_id
-    ).first()
+    db_file = db.query(models.File).join(models.Bucket).filter(models.File.id == file_id).first()
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
-
-    is_bucket_owner = db_file.bucket.owner_id == current_user.id
-    is_uploader = db_file.uploaded_by == current_user.id
-
-    if not is_bucket_owner and not is_uploader:
+    if db_file.bucket.owner_id != current_user.id and db_file.uploaded_by != current_user.id:
         raise HTTPException(status_code=403, detail="Only the uploader or bucket owner can rename this file")
-
     db_file.filename = req.filename
     db.commit()
     db.refresh(db_file)
@@ -306,33 +276,22 @@ def delete_file(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    db_file = db.query(models.File).join(models.Bucket).filter(
-        models.File.id == file_id
-    ).first()
+    db_file = db.query(models.File).join(models.Bucket).filter(models.File.id == file_id).first()
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
-
-    is_bucket_owner = db_file.bucket.owner_id == current_user.id
-    is_uploader = db_file.uploaded_by == current_user.id
-
-    if not is_bucket_owner and not is_uploader:
+    if db_file.bucket.owner_id != current_user.id and db_file.uploaded_by != current_user.id:
         raise HTTPException(status_code=403, detail="You can only delete files you uploaded")
-
     try:
         if db_file.cloudinary_public_id:
-            ext = db_file.filename.rsplit('.', 1)[-1].lower() if '.' in db_file.filename else ''
-            res_type = 'video' if ext in ('mp4','mkv','mov','avi','webm') else ('image' if ext in ('jpg','jpeg','png','gif','webp','bmp','svg') else 'raw')
-            cloudinary.uploader.destroy(db_file.cloudinary_public_id, resource_type=res_type)
+            cloudinary.uploader.destroy(db_file.cloudinary_public_id, resource_type=get_cloudinary_resource_type(db_file.filename))
     except Exception:
         pass
-
     db.delete(db_file)
     db.commit()
     return {"message": "File deleted"}
 
 @router.get("/download/{file_id}")
 def download_file(file_id: int, db: Session = Depends(get_db)):
-    from fastapi.responses import RedirectResponse
     db_file = db.query(models.File).filter(models.File.id == file_id).first()
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
@@ -346,26 +305,20 @@ def create_share(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    bucket = db.query(models.Bucket).filter(
+    if not db.query(models.Bucket).filter(
         models.Bucket.id == bucket_id,
         models.Bucket.owner_id == current_user.id
-    ).first()
-    if not bucket:
+    ).first():
         raise HTTPException(status_code=404, detail="Bucket not found")
 
-    existing = db.query(models.Share).filter(
-        models.Share.bucket_id == bucket_id,
-        models.Share.expiry_time > int(time.time() * 1000)
-    ).first()
+    existing = get_valid_share(bucket_id, db)
     if existing:
         return existing
 
-    code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-    expiry = int(time.time() * 1000) + (24 * 60 * 60 * 1000)
     share = models.Share(
         bucket_id=bucket_id,
-        share_code=code,
-        expiry_time=expiry
+        share_code=''.join(random.choices(string.ascii_uppercase + string.digits, k=8)),
+        expiry_time=now_ms() + (24 * 60 * 60 * 1000)
     )
     db.add(share)
     db.commit()
@@ -378,21 +331,13 @@ def lookup_share(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    share = db.query(models.Share).filter(
-        models.Share.share_code == code
-    ).first()
+    share = db.query(models.Share).filter(models.Share.share_code == code).first()
     if not share:
         raise HTTPException(status_code=404, detail="Invalid share code")
-    if int(time.time() * 1000) > share.expiry_time:
+    if now_ms() > share.expiry_time:
         raise HTTPException(status_code=410, detail="Share code has expired")
 
-    # Log this access
-    log = models.SharedAccessLog(
-        share_id=share.id,
-        user_id=current_user.id,
-        accessed_at=int(time.time() * 1000)
-    )
-    db.add(log)
+    db.add(models.SharedAccessLog(share_id=share.id, user_id=current_user.id, accessed_at=now_ms()))
     db.commit()
 
     return schemas.ShareLookupResponse(
@@ -407,8 +352,7 @@ def get_shared_buckets(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Returns buckets this user accessed via share code in the last 24 hours."""
-    since = int(time.time() * 1000) - (24 * 60 * 60 * 1000)
+    since = now_ms() - (24 * 60 * 60 * 1000)
     logs = db.query(models.SharedAccessLog).filter(
         models.SharedAccessLog.user_id == current_user.id,
         models.SharedAccessLog.accessed_at >= since
@@ -418,18 +362,16 @@ def get_shared_buckets(
     result = []
     for log in logs:
         share = log.share
-        if share.bucket_id in seen:
+        if share.bucket_id in seen or share.expiry_time <= now_ms():
             continue
         seen.add(share.bucket_id)
-        # Only include if share is still valid
-        if share.expiry_time > int(time.time() * 1000):
-            result.append(schemas.SharedAccessedBucketResponse(
-                bucket_id=share.bucket_id,
-                bucket_name=share.bucket.name,
-                share_code=share.share_code,
-                owner_username=share.bucket.owner.username,
-                accessed_at=log.accessed_at
-            ))
+        result.append(schemas.SharedAccessedBucketResponse(
+            bucket_id=share.bucket_id,
+            bucket_name=share.bucket.name,
+            share_code=share.share_code,
+            owner_username=share.bucket.owner.username,
+            accessed_at=log.accessed_at
+        ))
     return result
 
 # ─── Friends ──────────────────────────────────────────────────────────────────
@@ -440,22 +382,18 @@ def add_friend(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    target = db.query(models.User).filter(
-        models.User.username.ilike(username)
-    ).first()
+    target = db.query(models.User).filter(models.User.username.ilike(username)).first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     if target.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot add yourself")
-    existing = db.query(models.Friendship).filter(
+    if db.query(models.Friendship).filter(
         models.Friendship.user_id == current_user.id,
         models.Friendship.friend_id == target.id
-    ).first()
-    if existing:
+    ).first():
         raise HTTPException(status_code=400, detail="Already friends")
-    # Add both directions for easy querying
-    db.add(models.Friendship(user_id=current_user.id, friend_id=target.id, created_at=int(time.time() * 1000)))
-    db.add(models.Friendship(user_id=target.id, friend_id=current_user.id, created_at=int(time.time() * 1000)))
+    db.add(models.Friendship(user_id=current_user.id, friend_id=target.id, created_at=now_ms()))
+    db.add(models.Friendship(user_id=target.id, friend_id=current_user.id, created_at=now_ms()))
     db.commit()
     return schemas.FriendResponse(user_id=target.id, username=target.username)
 
@@ -473,14 +411,11 @@ def remove_friend(
     return {"message": "Friend removed"}
 
 @router.get("/friends", response_model=list[schemas.FriendResponse])
-def get_friends(
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    friendships = db.query(models.Friendship).filter(
-        models.Friendship.user_id == current_user.id
-    ).all()
-    return [schemas.FriendResponse(user_id=f.friend.id, username=f.friend.username) for f in friendships]
+def get_friends(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return [
+        schemas.FriendResponse(user_id=f.friend.id, username=f.friend.username)
+        for f in db.query(models.Friendship).filter(models.Friendship.user_id == current_user.id).all()
+    ]
 
 @router.post("/messages/{friend_id}/{bucket_id}", response_model=schemas.CodeMessageResponse)
 def send_code(
@@ -489,26 +424,24 @@ def send_code(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Must be friends
-    friendship = db.query(models.Friendship).filter(
+    if not db.query(models.Friendship).filter(
         models.Friendship.user_id == current_user.id,
         models.Friendship.friend_id == friend_id
-    ).first()
-    if not friendship:
+    ).first():
         raise HTTPException(status_code=403, detail="Not friends")
 
-    # Get or create a valid share code for this bucket
     share = get_valid_share(bucket_id, db)
     if not share:
-        bucket = db.query(models.Bucket).filter(
+        if not db.query(models.Bucket).filter(
             models.Bucket.id == bucket_id,
             models.Bucket.owner_id == current_user.id
-        ).first()
-        if not bucket:
+        ).first():
             raise HTTPException(status_code=404, detail="Bucket not found or not yours")
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        expiry = int(time.time() * 1000) + (24 * 60 * 60 * 1000)
-        share = models.Share(bucket_id=bucket_id, share_code=code, expiry_time=expiry)
+        share = models.Share(
+            bucket_id=bucket_id,
+            share_code=''.join(random.choices(string.ascii_uppercase + string.digits, k=8)),
+            expiry_time=now_ms() + (24 * 60 * 60 * 1000)
+        )
         db.add(share)
         db.commit()
         db.refresh(share)
@@ -519,7 +452,7 @@ def send_code(
         share_code=share.share_code,
         bucket_name=share.bucket.name,
         expiry_time=share.expiry_time,
-        sent_at=int(time.time() * 1000)
+        sent_at=now_ms()
     )
     db.add(msg)
     db.commit()
@@ -541,12 +474,10 @@ def get_messages(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    now = int(time.time() * 1000)
     msgs = db.query(models.CodeMessage).filter(
         ((models.CodeMessage.sender_id == current_user.id) & (models.CodeMessage.receiver_id == friend_id)) |
-        ((models.CodeMessage.sender_id == friend_id) & (models.CodeMessage.receiver_id == current_user.id))
-    ).filter(
-        models.CodeMessage.expiry_time > now  # only return non-expired codes
+        ((models.CodeMessage.sender_id == friend_id) & (models.CodeMessage.receiver_id == current_user.id)),
+        models.CodeMessage.expiry_time > now_ms()
     ).order_by(models.CodeMessage.sent_at.asc()).all()
 
     return [
