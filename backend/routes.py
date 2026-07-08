@@ -239,26 +239,32 @@ async def upload_file(
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Sanitize filename for Cloudinary public_id
-    safe_name = re.sub(r'[^\w\-.]', '_', file.filename)
+    original_filename = file.filename or "unnamed"
+    safe_name = re.sub(r'[^\w\-.]', '_', original_filename)
     content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
     ext = safe_name.rsplit('.', 1)[-1].lower() if '.' in safe_name else ''
     is_video = ext in ('mp4', 'mkv', 'mov', 'avi', 'webm')
     resource_type = 'video' if is_video else 'auto'
 
-    result = cloudinary.uploader.upload(
-        content,
-        folder=f"smartshare/bucket_{bucket_id}",
-        public_id=f"{int(time.time())}_{safe_name}",
-        resource_type=resource_type,
-        overwrite=False
-    )
+    try:
+        result = cloudinary.uploader.upload(
+            content,
+            folder=f"smartshare/bucket_{bucket_id}",
+            public_id=f"{int(time.time())}_{safe_name}",
+            resource_type=resource_type,
+            overwrite=False
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
     cloudinary_url = result["secure_url"]
     cloudinary_public_id = result["public_id"]
 
     db_file = models.File(
         bucket_id=bucket_id,
         uploaded_by=current_user.id,
-        filename=file.filename,
+        filename=original_filename,
         filepath=cloudinary_url,
         cloudinary_public_id=cloudinary_public_id,
         size=len(content),
